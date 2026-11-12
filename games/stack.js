@@ -1,0 +1,25 @@
+export function startStack(root,{read,save,sound}){
+ root.innerHTML='<div class="stack-wrap"><canvas class="stack-canvas" aria-label="Moving tower blocks. Press Space or tap Place to stack." role="img"></canvas><button class="pill-button stack-drop">Place floor ↓</button></div>';
+ const wrap=root.firstElementChild,canvas=wrap.querySelector('canvas'),ctx=canvas.getContext('2d'),button=wrap.querySelector('button');
+ let w=0,h=0,raf,previous=0,t=0,score=0,best=read('stackBest',0),paused=false,dead=false,streak=0,feedback='',feedbackT=0,camera=0,falling=[],blocks=[],moving;
+ const colors=['#9a8eb8','#a998c5','#c0a6ce','#d8b3cf','#e6b5bb','#e9ac96','#e9c17d','#ccca8d','#99bb9e','#86b9b1'];
+ function resize(){const box=wrap.getBoundingClientRect();w=box.width;h=box.height;const d=Math.min(devicePixelRatio||1,2);canvas.width=w*d;canvas.height=h*d;ctx.setTransform(d,0,0,d,0,0);}
+ function reset(){score=0;streak=0;t=0;camera=0;dead=false;falling=[];feedback='TAP TO STACK';feedbackT=4;const baseW=220;blocks=[{x:(400-baseW)/2,width:baseW,y:0,color:colors[0]}];spawn();wrap.querySelector('.result-overlay')?.remove();button.hidden=false;}
+ function spawn(){moving={x:score%2?-100:400,width:blocks.at(-1).width,y:(score+1)*28,color:colors[(score+1)%colors.length],dir:score%2?-1:1};}
+ function place(){if(paused||dead)return;const last=blocks.at(-1),left=Math.max(last.x,moving.x),right=Math.min(last.x+last.width,moving.x+moving.width),overlap=right-left,delta=moving.x-last.x;
+ if(overlap<=5){dead=true;falling.push({...moving,vx:moving.dir*75,vy:0});best=Math.max(best,score);save('stackBest',best);button.hidden=true;sound(150);showResult();return;}
+ const perfect=Math.abs(delta)<8;
+ if(perfect){moving.x=last.x;moving.width=last.width;streak++;feedback=streak>=3?'PERFECT ×'+streak:'PERFECT!';feedbackT=1;sound(700+Math.min(streak,6)*110);if(streak%3===0){moving.width=Math.min(235,moving.width+12);moving.x=Math.max(0,moving.x-6);feedback='PERFECT ×'+streak+' · +WIDTH';}}
+ else{streak=0;const cut=delta>0?{x:right,width:moving.x+moving.width-right}:{x:moving.x,width:left-moving.x};if(cut.width>0)falling.push({...cut,y:moving.y,color:moving.color,vx:delta>0?75:-75,vy:0});moving.x=left;moving.width=overlap;feedback='NICE';feedbackT=.7;sound(400+score*9);}
+ blocks.push({...moving});score++;if(score>best){best=score;save('stackBest',best);}spawn();
+ }
+ function showResult(){const el=document.createElement('div');el.className='result-overlay';el.innerHTML=`<div class="result-box"><span class="genre">ONE MORE FLOOR</span><h2>${score} floors.</h2><p>${score<4?'A little wobble. A fresh foundation.':score<15?'Quite the view from up here.':'The skyline has a new favourite.'}<br>Personal best: ${best}</p><button class="pill-button">Build again ↗</button><p>Space to restart</p></div>`;el.querySelector('button').onclick=reset;wrap.append(el);}
+ function drawBlock(b){const x=b.x,y=h-130-(b.y-camera)*w/400,bw=b.width*w/400,bh=26*w/400;ctx.fillStyle='#5a4f791e';ctx.fillRect(x*w/400+5,y+6,bw,bh);ctx.fillStyle=b.color;ctx.beginPath();ctx.roundRect(x*w/400,y,bw,bh,3);ctx.fill();ctx.fillStyle='#ffffff36';ctx.fillRect(x*w/400+2,y+1,Math.max(0,bw-4),3);ctx.fillStyle='#00000012';ctx.fillRect(x*w/400+1,y+bh-4,Math.max(0,bw-2),3);}
+ function frame(now){const dt=Math.min((now-previous)/1000||0,.04);previous=now;if(!paused){t+=dt;feedbackT-=dt;const target=Math.max(0,(score-6)*28);camera+=(target-camera)*Math.min(1,dt*6);if(!dead){moving.x+=moving.dir*(85+Math.min(score*5,115))*dt;if(moving.x>400-moving.width+55){moving.x=400-moving.width+55;moving.dir=-1;}if(moving.x< -55){moving.x=-55;moving.dir=1;}}
+ for(const f of falling){f.vy+=380*dt;f.x+=f.vx*dt;f.y-=f.vy*dt;}falling=falling.filter(f=>f.y>camera-400);}
+ ctx.fillStyle='#d9d2e6';ctx.fillRect(0,0,w,h);ctx.fillStyle='#ffffff35';for(let i=0;i<5;i++){ctx.beginPath();ctx.ellipse((i*137+70)%w,100+i*68,65,15,0,0,Math.PI*2);ctx.fill();}ctx.textAlign='center';ctx.fillStyle='#655a79';ctx.font='700 10px system-ui';ctx.fillText('FLOORS',w/2,34);ctx.font='48px Georgia';ctx.fillText(score,w/2,85);ctx.font='11px system-ui';ctx.fillText('BEST '+best,w/2,106);
+ ctx.fillStyle='#b6abc5';ctx.fillRect(0,h-100,w,100);for(const b of blocks.slice(-28))drawBlock(b);if(!dead)drawBlock(moving);for(const f of falling)drawBlock(f);if(feedbackT>0){ctx.fillStyle='#ffffff';ctx.font='800 16px system-ui';ctx.fillText(feedback,w/2,145);}raf=requestAnimationFrame(frame);}
+ function key(e){if(e.code==='Space'){e.preventDefault();if(dead&&!paused)reset();else place();}}
+ button.onclick=place;canvas.onclick=place;document.addEventListener('keydown',key);window.addEventListener('resize',resize);resize();reset();raf=requestAnimationFrame(frame);
+ return{destroy(){cancelAnimationFrame(raf);document.removeEventListener('keydown',key);window.removeEventListener('resize',resize);},pause(value){paused=value;wrap.querySelector('.pause-sheet')?.remove();if(value){const p=document.createElement('div');p.className='pause-sheet';p.textContent='Take a breath.';wrap.append(p);}}};
+}
